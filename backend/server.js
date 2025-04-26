@@ -114,6 +114,55 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ error: "Server error during login" });
   }
 });
+app.get("/api/cities/:city", async (req, res) => {
+  const { city } = req.params;
+
+  try {
+    const cityExists = await Schema.exists({ city: new RegExp(`^${city}$`, 'i') }); // Case-insensitive
+    res.json({ found: Boolean(cityExists) });
+  } catch (error) {
+    console.error("City check error:", error);
+    res.status(500).json({ error: "Server error while checking city" });
+  }
+});
+app.get("/api/doctors", async (req, res) => {
+  const { city, type } = req.query;
+
+  if (!city || !type) {
+    return res.status(400).json({ error: "City and type are required." });
+  }
+
+  try {
+    const doctors = await Schema.find({
+      city: { $regex: `^${city}$`, $options: 'i' }, // Match city case-insensitively
+      type: { $regex: type, $options: 'i' } // Match type (speciality) case-insensitively
+    });
+
+    if (doctors.length === 0) {
+      // Suggest similar types if no match found
+      const availableTypes = await Schema.distinct("type", {
+        city: { $regex: `^${city}$`, $options: 'i' }
+      });
+
+      const suggestions = availableTypes.filter(t =>
+        t.toLowerCase().includes(type.toLowerCase())
+      );
+
+      return res.status(404).json({
+        error: "No doctors found for the given city and type.",
+        suggestions: suggestions.length > 0 ? suggestions : "No suggestions available."
+      });
+    }
+
+    res.status(200).json(doctors);
+
+  } catch (error) {
+    console.error("Doctor search error:", error);
+    res.status(500).json({ error: "Server error while fetching doctors." });
+  }
+});
+
+
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
